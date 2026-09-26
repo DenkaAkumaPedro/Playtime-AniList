@@ -1,0 +1,16 @@
+AddonId: PlaytimeAniList_C034A45E-3C56-48DA-ABE0-1C46B4C4A57D
+Packages:
+  - Version: 1.0
+    RequiredApiVersion: 6.17.0
+    ReleaseDate: 2026-09-26
+    PackageUrl: https://github.com/DenkaAkumaPedro/Playtime-AniList/releases/download/v1.0/PlaytimeAniList_C034A45E-3C56-48DA-ABE0-1C46B4C4A57D_1_0.pext
+    Changelog:
+      - 'First public release.'
+      - 'Syncs AniList watch time into the Playtime field of every game imported by Importer for AniList.'
+      - 'Play time is AniList progress x episode duration, so partially watched series get a proportional value.'
+      - 'Sync scopes: whole library, last 7 days, last 30 days.'
+      - 'Per-game sync from the game context menu.'
+      - 'Optional "Add to existing playtime" mode.'
+      - 'Reuses the access token from Importer for AniList, with an optional override in the settings.'
+      - 'Known issue: games imported with addLinksAndImages disabled are skipped, because 1.0 reads the AniList id from Game.Links instead of Game.GameId. Fixed in 1.1.'
+      - 'Manga is not supported yet.'

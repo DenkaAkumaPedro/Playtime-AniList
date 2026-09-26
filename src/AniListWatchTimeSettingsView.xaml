@@ -1,0 +1,26 @@
+<UserControl x:Class="AniListWatchTime.AniListWatchTimeSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="420" d:DesignWidth="600">
+    <StackPanel Margin="15,10,15,10">
+        <TextBlock FontWeight="Bold" FontSize="16" Text="Playtime AniList" Margin="0,0,0,8"/>
+        <TextBlock TextWrapping="Wrap" Margin="0,0,0,12"
+                   Text="Preenche o tempo de jogo no Playnite com as horas assistidas dos animes da sua lista do AniList (episódios assistidos × duração por episódio). O token logado no &apos;Importer for AniList&apos; é usado automaticamente, sem configuração."/>
+
+        <CheckBox IsChecked="{Binding Settings.AccumulateToExisting}"
+                  Content="Adicionar as horas ao tempo de jogo já existente (em vez de substituir)"
+                  Margin="0,0,0,16"/>
+
+        <TextBlock TextWrapping="Wrap" Margin="0,0,0,4"
+                   Text="Token de acesso opcional (override). Deixe em branco para usar o token do &apos;Importer for AniList&apos;."/>
+        <TextBox Text="{Binding Settings.AccessTokenOverride}"
+                 Height="80"
+                 TextWrapping="Wrap"
+                 AcceptsReturn="True"
+                 VerticalScrollBarVisibility="Auto"
+                 FontFamily="Consolas, Courier New"/>
+    </StackPanel>
+</UserControl>
