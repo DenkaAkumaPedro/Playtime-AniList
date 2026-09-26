@@ -42,6 +42,7 @@ namespace AniListWatchTime.Models
     public class MediaListEntry
     {
         public int? Progress { get; set; }
+        public int? ProgressVolumes { get; set; }
         public int? UpdatedAt { get; set; }
         public MediaSummary Media { get; set; }
     }
@@ -49,8 +50,12 @@ namespace AniListWatchTime.Models
     public class MediaSummary
     {
         public long Id { get; set; }
+        public string Type { get; set; }
         public int? Duration { get; set; }
         public string Format { get; set; }
+        public int? Chapters { get; set; }
+        public int? Volumes { get; set; }
+        public string CountryOfOrigin { get; set; }
     }
 
     public class MediaEntryResponse
@@ -60,7 +65,12 @@ namespace AniListWatchTime.Models
 
     public class MediaEntryPayload
     {
+        public string Type { get; set; }
         public int? Duration { get; set; }
+        public string Format { get; set; }
+        public int? Chapters { get; set; }
+        public int? Volumes { get; set; }
+        public string CountryOfOrigin { get; set; }
         public MediaListSubEntry MediaListEntry { get; set; }
     }
 

@@ -19,6 +19,13 @@ namespace AniListWatchTime.Services
         LastMonth
     }
 
+    public enum SyncScope
+    {
+        Anime,
+        Manga,
+        Both
+    }
+
     public class AniListClient
     {
         public static readonly Guid ImporterPluginId = Guid.Parse("2366fb38-bf25-45ea-9a78-dcc797ee83c3");
@@ -27,10 +34,13 @@ namespace AniListWatchTime.Services
         private const long SecondsPerWeek = 7L * 24L * 60L * 60L;
         private const long SecondsPerMonth = 30L * 24L * 60L * 60L;
 
+        private const double MinPagesPerChapter = 6d;
+        private const double MaxPagesPerChapter = 120d;
+
         private static readonly HttpClient httpClient = new HttpClient() { Timeout = TimeSpan.FromSeconds(120) };
 
         private readonly ILogger logger = LogManager.GetLogger();
-        private readonly Regex anilistAnimeIdRegex = new Regex(@"(?:anilist\.co/anime|anilist\.co)/?(\d+)", RegexOptions.IgnoreCase);
+        private readonly Regex anilistAnimeIdRegex = new Regex(@"(?:anilist\.co/(?:anime|manga)|anilist\.co)/?(\d+)", RegexOptions.IgnoreCase);
 
         private const string viewerQuery = @"
         query {
@@ -46,11 +56,16 @@ namespace AniListWatchTime.Services
                 lists {
                     entries {
                         progress
+                        progressVolumes
                         updatedAt
                         media {
                             id
+                            type
                             duration
                             format
+                            chapters
+                            volumes
+                            countryOfOrigin
                         }
                     }
                 }
@@ -60,9 +75,15 @@ namespace AniListWatchTime.Services
         private const string mediaEntryQuery = @"
         query ($id: Int) {
             Media(id: $id) {
+                type
                 duration
+                format
+                chapters
+                volumes
+                countryOfOrigin
                 mediaListEntry {
                     progress
+                    progressVolumes
                     updatedAt
                 }
             }
@@ -70,10 +91,10 @@ namespace AniListWatchTime.Services
 
         static AniListClient()
         {
-            httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "PlaytimeAniList/1.0 (Playnite extension)");
+            httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "PlaytimeAniList/1.1 (Playnite extension)");
         }
 
-        public string SyncLibrary(AniListWatchTimeSettings pluginSettings, IPlayniteAPI api, SyncWindow window)
+        public string SyncLibrary(AniListWatchTimeSettings pluginSettings, IPlayniteAPI api, SyncWindow window, SyncScope scope)
         {
             var token = ResolveToken(pluginSettings, api);
             if (string.IsNullOrWhiteSpace(token))
@@ -88,14 +109,30 @@ namespace AniListWatchTime.Services
                 return "Não foi possível identificar a conta do AniList. Verifique o token atual.";
             }
 
-            var entries = GetMediaList(token, userId);
-            if (entries == null)
+            var wantsAnime = scope == SyncScope.Anime || scope == SyncScope.Both;
+            var wantsManga = scope == SyncScope.Manga || scope == SyncScope.Both;
+
+            var entries = new List<MediaListEntry>();
+            if (wantsAnime)
             {
-                return "Falha ao buscar a lista de animes no AniList. Tente novamente.";
+                entries.AddRange(GetMediaList(token, userId, "ANIME"));
+            }
+
+            if (wantsManga)
+            {
+                entries.AddRange(GetMediaList(token, userId, "MANGA"));
+            }
+
+            if (entries.Count == 0)
+            {
+                return "Nenhum item foi retornado pelo AniList para o escopo selecionado.";
             }
 
             var cutoff = GetCutoff(window);
             var secondsByMediaId = new Dictionary<long, long>();
+            var mangaMediaIds = new HashSet<long>();
+            var activityByMediaId = new Dictionary<long, long>();
+
             foreach (var entry in entries)
             {
                 if (entry?.Media == null)
@@ -108,7 +145,21 @@ namespace AniListWatchTime.Services
                     continue;
                 }
 
-                var seconds = CalculateSeconds(entry.Progress, entry.Media.Duration);
+                var isManga = string.Equals(entry.Media.Type, "MANGA", StringComparison.OrdinalIgnoreCase);
+                if (isManga)
+                {
+                    mangaMediaIds.Add(entry.Media.Id);
+                }
+
+                if (entry.UpdatedAt > 0)
+                {
+                    activityByMediaId[entry.Media.Id] = entry.UpdatedAt.Value;
+                }
+
+                var seconds = isManga
+                    ? CalculateMangaSeconds(entry.Progress, entry.Media, pluginSettings)
+                    : CalculateAnimeSeconds(entry.Progress, entry.Media.Duration);
+
                 if (seconds > 0)
                 {
                     secondsByMediaId[entry.Media.Id] = seconds;
@@ -119,6 +170,9 @@ namespace AniListWatchTime.Services
             var updated = 0;
             var noLink = 0;
             var skipped = 0;
+            var mangaMatched = 0;
+            var mangaSecondsAdded = 0L;
+            var activityChanged = 0;
 
             using (api.Database.BufferedUpdate())
             {
@@ -131,23 +185,48 @@ namespace AniListWatchTime.Services
                         continue;
                     }
 
-                    if (!secondsByMediaId.TryGetValue(mediaId.Value, out var seconds))
-                    {
-                        skipped++;
-                        continue;
-                    }
+                    secondsByMediaId.TryGetValue(mediaId.Value, out var seconds);
 
-                    var target = ComputeTarget(game.Playtime, seconds, pluginSettings.AccumulateToExisting);
-                    if (target != game.Playtime)
+                    var isMangaEntry = mangaMediaIds.Contains(mediaId.Value);
+                    var previousPlaytime = game.Playtime;
+                    var target = ComputeTarget(previousPlaytime, seconds, pluginSettings.AccumulateToExisting);
+                    var changed = false;
+
+                    if (seconds > 0 && target != previousPlaytime)
                     {
                         game.Playtime = target;
-                        api.Database.Games.Update(game);
+                        if (isMangaEntry && target > previousPlaytime)
+                        {
+                            mangaSecondsAdded += (long)(target - previousPlaytime);
+                        }
+
+                        changed = true;
                         updated++;
+                    }
+
+                    if (isMangaEntry)
+                    {
+                        mangaMatched++;
+                    }
+
+                    if (seconds == 0)
+                    {
+                        skipped++;
+                    }
+
+                    var activityChanges = ApplyActivityData(game, activityByMediaId, mediaId.Value, seconds > 0);
+                    changed |= activityChanges > 0;
+                    activityChanged += activityChanges;
+
+                    if (changed)
+                    {
+                        api.Database.Games.Update(game);
                     }
                 }
             }
 
-            return BuildLibrarySummary(window, entries.Count, animeGames.Count, secondsByMediaId.Count, updated, noLink, skipped);
+            return BuildLibrarySummary(window, scope, entries.Count, animeGames.Count, secondsByMediaId.Count,
+                updated, noLink, skipped, mangaMatched, mangaSecondsAdded, activityChanged);
         }
 
         public string SyncSelectedGames(AniListWatchTimeSettings pluginSettings, IPlayniteAPI api, List<Game> games)
@@ -161,6 +240,8 @@ namespace AniListWatchTime.Services
 
             var updated = 0;
             var failed = 0;
+            var animeUpdated = 0;
+            var mangaUpdated = 0;
 
             using (api.Database.BufferedUpdate())
             {
@@ -180,7 +261,29 @@ namespace AniListWatchTime.Services
                         continue;
                     }
 
-                    var seconds = CalculateSeconds(media.MediaListEntry?.Progress, media.Duration);
+                    var isManga = string.Equals(media.Type, "MANGA", StringComparison.OrdinalIgnoreCase);
+                    long seconds;
+                    if (isManga)
+                    {
+                        if (!pluginSettings.SyncManga)
+                        {
+                            failed++;
+                            continue;
+                        }
+
+                        seconds = CalculateMangaSeconds(media.MediaListEntry?.Progress, media, pluginSettings);
+                    }
+                    else
+                    {
+                        if (!pluginSettings.SyncAnime)
+                        {
+                            failed++;
+                            continue;
+                        }
+
+                        seconds = CalculateAnimeSeconds(media.MediaListEntry?.Progress, media.Duration);
+                    }
+
                     if (seconds <= 0)
                     {
                         failed++;
@@ -188,18 +291,61 @@ namespace AniListWatchTime.Services
                     }
 
                     var target = ComputeTarget(game.Playtime, seconds, pluginSettings.AccumulateToExisting);
+                    var changed = false;
                     if (target != game.Playtime)
                     {
                         game.Playtime = target;
-                        api.Database.Games.Update(game);
+                        changed = true;
                         updated++;
+                        if (isManga)
+                        {
+                            mangaUpdated++;
+                        }
+                        else
+                        {
+                            animeUpdated++;
+                        }
+                    }
+
+                    var activity = new Dictionary<long, long>
+                    {
+                        { mediaId.Value, media.MediaListEntry?.UpdatedAt ?? 0 }
+                    };
+                    changed |= ApplyActivityData(game, activity, mediaId.Value, true) > 0;
+
+                    if (changed)
+                    {
+                        api.Database.Games.Update(game);
                     }
                 }
             }
 
-            return $"Selecionados: {games.Count} animes" + Environment.NewLine +
-                   $"Atualizados: {updated}" + Environment.NewLine +
+            return $"Selecionados: {games.Count} itens" + Environment.NewLine +
+                   $"Atualizados: {updated} (anime: {animeUpdated}, mangá: {mangaUpdated})" + Environment.NewLine +
                    $"Sem dados/sem link: {failed}";
+        }
+
+        private static int ApplyActivityData(Game game, Dictionary<long, long> activityByMediaId, long mediaId, bool hasProgress)
+        {
+            var changes = 0;
+
+            if (activityByMediaId.TryGetValue(mediaId, out var unix) && unix > 0)
+            {
+                var updatedAt = DateTimeOffset.FromUnixTimeSeconds(unix).LocalDateTime;
+                if (game.LastActivity == null || updatedAt > game.LastActivity.Value)
+                {
+                    game.LastActivity = updatedAt;
+                    changes++;
+                }
+            }
+
+            if (hasProgress && game.PlayCount == 0)
+            {
+                game.PlayCount = 1;
+                changes++;
+            }
+
+            return changes;
         }
 
         private string ResolveToken(AniListWatchTimeSettings pluginSettings, IPlayniteAPI api)
@@ -271,12 +417,12 @@ namespace AniListWatchTime.Services
             return -1;
         }
 
-        private List<MediaListEntry> GetMediaList(string token, int userId)
+        private List<MediaListEntry> GetMediaList(string token, int userId, string mediaType)
         {
             var variables = new Dictionary<string, object>
             {
                 { "userId", userId },
-                { "type", "ANIME" }
+                { "type", mediaType }
             };
 
             var data = Post<MediaListCollectionResponse>(token, mediaListQuery, variables);
@@ -341,7 +487,19 @@ namespace AniListWatchTime.Services
 
         private long? GetMediaIdFromGame(Game game)
         {
-            if (game?.Links == null)
+            if (game == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(game.GameId) &&
+                long.TryParse(game.GameId.Trim(), out var gameId) &&
+                gameId > 0)
+            {
+                return gameId;
+            }
+
+            if (game.Links == null)
             {
                 return null;
             }
@@ -363,7 +521,7 @@ namespace AniListWatchTime.Services
             return null;
         }
 
-        private static long CalculateSeconds(int? progress, int? duration)
+        private static long CalculateAnimeSeconds(int? progress, int? duration)
         {
             if (!progress.HasValue || progress.Value <= 0 || !duration.HasValue || duration.Value <= 0)
             {
@@ -373,8 +531,59 @@ namespace AniListWatchTime.Services
             return (long)progress.Value * duration.Value * 60L;
         }
 
+        public static long CalculateMangaSeconds(int? chaptersRead, MediaSummary media, AniListWatchTimeSettings settings)
+        {
+            return CalculateMangaSeconds(chaptersRead, media?.Format, media?.Chapters, media?.Volumes, media?.CountryOfOrigin, settings);
+        }
+
+        public static long CalculateMangaSeconds(int? chaptersRead, MediaEntryPayload media, AniListWatchTimeSettings settings)
+        {
+            return CalculateMangaSeconds(chaptersRead, media?.Format, media?.Chapters, media?.Volumes, media?.CountryOfOrigin, settings);
+        }
+
+        private static long CalculateMangaSeconds(int? chaptersRead, string format, int? totalChapters, int? totalVolumes, string countryOfOrigin, AniListWatchTimeSettings settings)
+        {
+            if (!chaptersRead.HasValue || chaptersRead.Value <= 0)
+            {
+                return 0;
+            }
+
+            var chapters = chaptersRead.Value;
+            var formatName = (format ?? string.Empty).Trim().ToUpperInvariant();
+            var origin = (countryOfOrigin ?? string.Empty).Trim().ToUpperInvariant();
+
+            if (formatName == "ONE_SHOT")
+            {
+                return (long)Math.Round(chapters * (double)settings.GetPagesPerVolume() * settings.GetSecondsPerPage());
+            }
+
+            if (formatName == "NOVEL")
+            {
+                return chapters * settings.GetNovelMinutesPerChapter() * 60L;
+            }
+
+            if (origin == "KR" || origin == "CN")
+            {
+                return chapters * settings.GetWebtoonMinutesPerChapter() * 60L;
+            }
+
+            if (totalChapters.HasValue && totalVolumes.HasValue && totalChapters.Value > 0 && totalVolumes.Value > 0)
+            {
+                var pagesPerChapter = settings.GetPagesPerVolume() * (double)totalVolumes.Value / totalChapters.Value;
+                pagesPerChapter = Math.Min(MaxPagesPerChapter, Math.Max(MinPagesPerChapter, pagesPerChapter));
+                return (long)Math.Round(chapters * pagesPerChapter * settings.GetSecondsPerPage());
+            }
+
+            return chapters * settings.GetFallbackMinutesPerChapter() * 60L;
+        }
+
         private static ulong ComputeTarget(ulong currentPlaytime, long seconds, bool accumulate)
         {
+            if (seconds <= 0)
+            {
+                return currentPlaytime;
+            }
+
             if (!accumulate)
             {
                 return (ulong)seconds;
@@ -406,18 +615,42 @@ namespace AniListWatchTime.Services
             return (long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
         }
 
-        private static string BuildLibrarySummary(SyncWindow window, int totalEntries, int totalGames, int matched, int updated, int noLink, int skipped)
+        private static string BuildLibrarySummary(SyncWindow window, SyncScope scope, int totalEntries, int totalGames, int matched,
+            int updated, int noLink, int skipped, int mangaMatched, long mangaSeconds, int activityUpdated)
         {
             var windowText = window == SyncWindow.All ? "toda a lista"
                 : window == SyncWindow.LastWeek ? "última semana" : "último mês";
 
-            return $"Sincronização concluída ({windowText})." + Environment.NewLine + Environment.NewLine +
-                   $"• Animes processados do AniList: {totalEntries}" + Environment.NewLine +
-                   $"• Jogos de anime no Playnite: {totalGames}" + Environment.NewLine +
-                   $"• Jogos com tempo disponível: {matched}" + Environment.NewLine +
-                   $"• Tempos atualizados: {updated}" + Environment.NewLine +
-                   $"• Já sincronizados/pulados: {skipped}" + Environment.NewLine +
-                   $"• Jogos sem link do AniList: {noLink}";
+            var scopeText = scope == SyncScope.Anime ? "anime"
+                : scope == SyncScope.Manga ? "mangá" : "anime e mangá";
+
+            var summary = $"Sincronização concluída ({windowText}, {scopeText})." + Environment.NewLine + Environment.NewLine +
+                          $"• Itens processados do AniList: {totalEntries}" + Environment.NewLine +
+                          $"• Jogos de anime/mangá no Playnite: {totalGames}" + Environment.NewLine +
+                          $"• Jogos com tempo disponível: {matched}" + Environment.NewLine +
+                          $"• Tempos atualizados: {updated}" + Environment.NewLine +
+                          $"• Mangás com tempo calculado: {mangaMatched} ({FormatHours(mangaSeconds)})" + Environment.NewLine +
+                          $"• Atividade (última data) atualizada: {activityUpdated}" + Environment.NewLine +
+                          $"• Já sincronizados/pulados: {skipped}" + Environment.NewLine +
+                          $"• Jogos sem link do AniList: {noLink}";
+
+            if (scope == SyncScope.Both)
+            {
+                summary += Environment.NewLine + Environment.NewLine +
+                    "O tempo de anime e de mangá somado aparece em Playnite ▸ Estatísticas (Tempo total, Tempo médio, Mais jogados).";
+            }
+
+            return summary;
+        }
+
+        private static string FormatHours(long seconds)
+        {
+            if (seconds <= 0)
+            {
+                return "0h";
+            }
+
+            return string.Format("{0:0.0}h", TimeSpan.FromSeconds(seconds).TotalHours);
         }
     }
 }

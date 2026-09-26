@@ -1,13 +1,29 @@
 using Playnite.SDK;
 using Playnite.SDK.Data;
+using System;
 using System.Collections.Generic;
 
 namespace AniListWatchTime
 {
     public class AniListWatchTimeSettings : ObservableObject
     {
+        private const int DefaultPagesPerVolume = 200;
+        private const int DefaultSecondsPerPage = 18;
+        private const int DefaultFallbackMinutesPerChapter = 5;
+        private const int DefaultNovelMinutesPerChapter = 12;
+        private const int DefaultWebtoonMinutesPerChapter = 10;
+
         private string accessTokenOverride = string.Empty;
         private bool accumulateToExisting = false;
+        private bool syncAnime = true;
+        private bool syncManga = true;
+        private int pagesPerVolume = DefaultPagesPerVolume;
+        private int secondsPerPage = DefaultSecondsPerPage;
+        private int fallbackMinutesPerChapter = DefaultFallbackMinutesPerChapter;
+        private int novelMinutesPerChapter = DefaultNovelMinutesPerChapter;
+        private int webtoonMinutesPerChapter = DefaultWebtoonMinutesPerChapter;
+        private bool autoSyncOnLibraryUpdate = false;
+        private bool autoSyncShowNotification = true;
 
         public string AccessTokenOverride
         {
@@ -19,6 +35,95 @@ namespace AniListWatchTime
         {
             get => accumulateToExisting;
             set => SetValue(ref accumulateToExisting, value);
+        }
+
+        public bool SyncAnime
+        {
+            get => syncAnime;
+            set => SetValue(ref syncAnime, value);
+        }
+
+        public bool SyncManga
+        {
+            get => syncManga;
+            set => SetValue(ref syncManga, value);
+        }
+
+        public int PagesPerVolume
+        {
+            get => pagesPerVolume;
+            set => SetValue(ref pagesPerVolume, value);
+        }
+
+        public int SecondsPerPage
+        {
+            get => secondsPerPage;
+            set => SetValue(ref secondsPerPage, value);
+        }
+
+        public int FallbackMinutesPerChapter
+        {
+            get => fallbackMinutesPerChapter;
+            set => SetValue(ref fallbackMinutesPerChapter, value);
+        }
+
+        public int NovelMinutesPerChapter
+        {
+            get => novelMinutesPerChapter;
+            set => SetValue(ref novelMinutesPerChapter, value);
+        }
+
+        public int WebtoonMinutesPerChapter
+        {
+            get => webtoonMinutesPerChapter;
+            set => SetValue(ref webtoonMinutesPerChapter, value);
+        }
+
+        public bool AutoSyncOnLibraryUpdate
+        {
+            get => autoSyncOnLibraryUpdate;
+            set => SetValue(ref autoSyncOnLibraryUpdate, value);
+        }
+
+        public bool AutoSyncShowNotification
+        {
+            get => autoSyncShowNotification;
+            set => SetValue(ref autoSyncShowNotification, value);
+        }
+
+        public int GetPagesPerVolume()
+        {
+            return Clamp(pagesPerVolume, 20, 500);
+        }
+
+        public int GetSecondsPerPage()
+        {
+            return Clamp(secondsPerPage, 1, 300);
+        }
+
+        public int GetFallbackMinutesPerChapter()
+        {
+            return Clamp(fallbackMinutesPerChapter, 1, 120);
+        }
+
+        public int GetNovelMinutesPerChapter()
+        {
+            return Clamp(novelMinutesPerChapter, 1, 120);
+        }
+
+        public int GetWebtoonMinutesPerChapter()
+        {
+            return Clamp(webtoonMinutesPerChapter, 1, 120);
+        }
+
+        private static int Clamp(int value, int min, int max)
+        {
+            if (value < min)
+            {
+                return min;
+            }
+
+            return value > max ? max : value;
         }
     }
 
@@ -63,7 +168,38 @@ namespace AniListWatchTime
         public bool VerifySettings(out List<string> errors)
         {
             errors = new List<string>();
-            return true;
+
+            if (!Settings.SyncAnime && !Settings.SyncManga)
+            {
+                errors.Add("Selecione ao menos um tipo de mídia para sincronizar (anime ou mangá).");
+            }
+
+            if (Settings.PagesPerVolume < 20 || Settings.PagesPerVolume > 500)
+            {
+                errors.Add("Páginas por volume deve estar entre 20 e 500.");
+            }
+
+            if (Settings.SecondsPerPage < 1 || Settings.SecondsPerPage > 300)
+            {
+                errors.Add("Segundos por página deve estar entre 1 e 300.");
+            }
+
+            if (Settings.FallbackMinutesPerChapter < 1 || Settings.FallbackMinutesPerChapter > 120)
+            {
+                errors.Add("Minutos por capítulo (padrão) deve estar entre 1 e 120.");
+            }
+
+            if (Settings.NovelMinutesPerChapter < 1 || Settings.NovelMinutesPerChapter > 120)
+            {
+                errors.Add("Minutos por capítulo de novel deve estar entre 1 e 120.");
+            }
+
+            if (Settings.WebtoonMinutesPerChapter < 1 || Settings.WebtoonMinutesPerChapter > 120)
+            {
+                errors.Add("Minutos por capítulo de webtoon deve estar entre 1 e 120.");
+            }
+
+            return errors.Count == 0;
         }
     }
 }

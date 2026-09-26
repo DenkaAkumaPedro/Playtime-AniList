@@ -4,23 +4,77 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
-             d:DesignHeight="420" d:DesignWidth="600">
-    <StackPanel Margin="15,10,15,10">
-        <TextBlock FontWeight="Bold" FontSize="16" Text="Playtime AniList" Margin="0,0,0,8"/>
-        <TextBlock TextWrapping="Wrap" Margin="0,0,0,12"
-                   Text="Preenche o tempo de jogo no Playnite com as horas assistidas dos animes da sua lista do AniList (episódios assistidos × duração por episódio). O token logado no &apos;Importer for AniList&apos; é usado automaticamente, sem configuração."/>
+             d:DesignHeight="720" d:DesignWidth="640">
+    <UserControl.Resources>
+        <Style TargetType="TextBlock" x:Key="SectionTitle">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style TargetType="TextBlock" x:Key="FieldLabel">
+            <Setter Property="Margin" Value="0,10,0,2" />
+        </Style>
+        <Style TargetType="TextBox" x:Key="NumberBox">
+            <Setter Property="Width" Value="80" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
 
-        <CheckBox IsChecked="{Binding Settings.AccumulateToExisting}"
-                  Content="Adicionar as horas ao tempo de jogo já existente (em vez de substituir)"
-                  Margin="0,0,0,16"/>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="15,10,15,15">
+            <TextBlock FontWeight="Bold" FontSize="16" Text="Playtime AniList" Margin="0,0,0,8" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
+                       Text="Preenche o tempo de jogo no Playnite com as horas da sua lista do AniList: animes contam episódios assistidos × duração por episódio; mangás contam capítulos lidos. O tempo é somado no mesmo campo de tempo de jogo, então aparece em Playnite ▸ Estatísticas (Tempo total, Tempo médio e Mais jogados). O token logado no 'Importer for AniList' é usado automaticamente, sem configuração." />
 
-        <TextBlock TextWrapping="Wrap" Margin="0,0,0,4"
-                   Text="Token de acesso opcional (override). Deixe em branco para usar o token do &apos;Importer for AniList&apos;."/>
-        <TextBox Text="{Binding Settings.AccessTokenOverride}"
-                 Height="80"
-                 TextWrapping="Wrap"
-                 AcceptsReturn="True"
-                 VerticalScrollBarVisibility="Auto"
-                 FontFamily="Consolas, Courier New"/>
-    </StackPanel>
+            <TextBlock Style="{StaticResource SectionTitle}" Text="O que sincronizar" />
+            <CheckBox IsChecked="{Binding Settings.SyncAnime}"
+                      Content="Animes (episódios assistidos × duração)" Margin="0,0,0,4" />
+            <CheckBox IsChecked="{Binding Settings.SyncManga}"
+                      Content="Mangás (capítulos lidos, com estimativa de tempo de leitura)" Margin="0,0,0,4" />
+            <CheckBox IsChecked="{Binding Settings.AccumulateToExisting}"
+                      Content="Adicionar as horas ao tempo de jogo já existente (em vez de substituir)" Margin="0,0,0,12" />
+
+            <TextBlock Style="{StaticResource SectionTitle}" Text="Leitura de mangá" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,4"
+                       Text="O AniList não informa quantas páginas tem cada capítulo. A extensão estima as páginas por capítulo com os dados que o AniList tem (capítulos e volumes totais) usando o padrão de um volume em tankobon, e multiplica pelo seu ritmo de leitura. Capítulos de volume único, novels e webtoons usam um valor fixo por capítulo." />
+
+            <TextBlock Style="{StaticResource FieldLabel}"
+                       Text="Páginas por volume (padrão de tankobon: 200)" />
+            <TextBox Style="{StaticResource NumberBox}" Text="{Binding Settings.PagesPerVolume}" />
+
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Segundos por página (18 ≈ meio termo entre leitura rápida e apreciar o desenho)" />
+            <TextBox Style="{StaticResource NumberBox}" Text="{Binding Settings.SecondsPerPage}" />
+
+            <TextBlock Style="{StaticResource FieldLabel}"
+                       Text="Minutos por capítulo quando o AniList não tem capítulos/volumes (séries em andamento)" />
+            <TextBox Style="{StaticResource NumberBox}" Text="{Binding Settings.FallbackMinutesPerChapter}" />
+
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Minutos por capítulo de novel (formato NOVEL, sem imagens)" />
+            <TextBox Style="{StaticResource NumberBox}" Text="{Binding Settings.NovelMinutesPerChapter}" />
+
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Minutos por capítulo de webtoon (manhwa/manhua, capítulos longos em rolagem)" />
+            <TextBox Style="{StaticResource NumberBox}" Text="{Binding Settings.WebtoonMinutesPerChapter}" />
+
+            <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,8,0,16"
+                       Text="Referência: capítulo semanal shonen tem 17-20 páginas (média de 18,5), volume tankobon ~200 páginas. Auto-relatos de leitura dão 4-7 min por capítulo de 18-20 páginas e 40-60 min por volume. Com os padrões acima, um capítulo de 19 páginas dá ~5,7 min e o volume de 200 páginas ~1 h." />
+
+            <TextBlock Style="{StaticResource SectionTitle}" Text="Sincronização automática" />
+            <CheckBox IsChecked="{Binding Settings.AutoSyncOnLibraryUpdate}"
+                      Content="Sincronizar automaticamente ao atualizar a biblioteca do Playnite" Margin="0,0,0,4" />
+            <CheckBox IsChecked="{Binding Settings.AutoSyncShowNotification}"
+                      Content="Mostrar notificação com o resultado da sincronização automática" Margin="0,0,0,4" />
+            <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,4,0,16"
+                       Text="A sincronização automática roda no máximo uma vez a cada 24 horas e só depois que todos os plugins de biblioteca terminam, então não compete com o 'Importer for AniList'." />
+
+            <TextBlock Style="{StaticResource SectionTitle}" Text="Token de acesso" />
+            <TextBlock TextWrapping="Wrap" Margin="0,0,0,4"
+                       Text="Token de acesso opcional (override). Deixe em branco para usar o token do 'Importer for AniList'." />
+            <TextBox Text="{Binding Settings.AccessTokenOverride}"
+                     Height="80"
+                     TextWrapping="Wrap"
+                     AcceptsReturn="True"
+                     VerticalScrollBarVisibility="Auto"
+                     FontFamily="Consolas, Courier New" />
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>
