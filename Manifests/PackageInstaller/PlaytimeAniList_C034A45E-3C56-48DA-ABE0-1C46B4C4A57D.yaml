@@ -1,5 +1,13 @@
 AddonId: PlaytimeAniList_C034A45E-3C56-48DA-ABE0-1C46B4C4A57D
 Packages:
+  - Version: 1.4
+    RequiredApiVersion: 6.17.0
+    ReleaseDate: 2026-10-04
+    PackageUrl: https://github.com/DenkaAkumaPedro/Playtime-AniList/releases/download/v1.4/AniList_PlayTime_1-4.pext
+    Changelog:
+      - 'Incremental (delta) session mode for GameActivity (new default). Each sync appends a session with only the time added since last sync, creating a true time series.'
+      - 'Session mode setting: choose between Incremental (new sessions on progress) and Replace Total (single session with total time, v1.3 behavior).'
+      - 'Default session mode is now Incremental for better time-series visualization in GameActivity charts.'
   - Version: 1.0
     RequiredApiVersion: 6.17.0
     ReleaseDate: 2026-09-26
