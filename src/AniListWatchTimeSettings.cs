@@ -5,6 +5,12 @@ using System.Collections.Generic;
 
 namespace AniListWatchTime
 {
+    public enum SessionMode
+    {
+        ReplaceTotal = 0,
+        Incremental = 1
+    }
+
     public class AniListWatchTimeSettings : ObservableObject
     {
         private const int DefaultPagesPerVolume = 200;
@@ -24,6 +30,8 @@ namespace AniListWatchTime
         private int webtoonMinutesPerChapter = DefaultWebtoonMinutesPerChapter;
         private bool autoSyncOnLibraryUpdate = false;
         private bool autoSyncShowNotification = true;
+        private bool writeActivitySessions = false;
+        private SessionMode sessionMode = SessionMode.Incremental;
 
         public string AccessTokenOverride
         {
@@ -89,6 +97,18 @@ namespace AniListWatchTime
         {
             get => autoSyncShowNotification;
             set => SetValue(ref autoSyncShowNotification, value);
+        }
+
+        public bool WriteActivitySessions
+        {
+            get => writeActivitySessions;
+            set => SetValue(ref writeActivitySessions, value);
+        }
+
+        public SessionMode SessionMode
+        {
+            get => sessionMode;
+            set => SetValue(ref sessionMode, value);
         }
 
         public int GetPagesPerVolume()
@@ -157,7 +177,12 @@ namespace AniListWatchTime
 
         public void CancelEdit()
         {
-            Settings = editingClone;
+            // Sem BeginEdit nao ha clone: trocar mesmo assim deixaria Settings nulo e a tela
+            // de configuracoes quebraria no binding.
+            if (editingClone != null)
+            {
+                Settings = editingClone;
+            }
         }
 
         public void EndEdit()

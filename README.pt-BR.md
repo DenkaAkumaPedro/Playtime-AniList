@@ -1,4 +1,4 @@
-# Playtime AniList
+# AniList PlayTime
 
 > Extensão genérica para o [Playnite](https://playnite.link) 10.x que transforma seu
 > progresso do [AniList](https://anilist.co) em tempo de uso real dentro do Playnite.
@@ -8,13 +8,17 @@ título, capa, status e progresso. O que não têm é lugar no campo **Tempo de 
 justamente o que o Playnite usa em *Tempo total*, *Tempo médio* e *Mais jogados* na tela
 de Estatísticas.
 
-O **Playtime AniList** preenche esse campo a partir do seu progresso no AniList, para que
+O **AniList PlayTime** preenche esse campo a partir do seu progresso no AniList, para que
 sua coleção inteira de anime **e mangá** apareça nas estatísticas ao lado dos jogos.
 
 - Id da extensão: `PlaytimeAniList_C034A45E-3C56-48DA-ABE0-1C46B4C4A57D`
-- Menu: **Extensões ▸ Playtime AniList**
+- Menu: **Extensões ▸ AniList PlayTime**
 
-> **Atenção:** a 1.1 está em beta. A versão estável é a
+> **Renomeada:** a extensão se chamava *Playtime AniList* e ficava como um item próprio na
+> barra de menus. Agora é *AniList PlayTime* e fica dentro de **Extensões**. O id não mudou,
+> então isto é uma atualização normal: suas configurações vêm junto.
+
+> **Atenção:** a 1.3 está em beta. A versão estável é a
 > [1.0](https://github.com/DenkaAkumaPedro/Playtime-AniList/releases/tag/v1.0)
 > (só anime). Veja o [CHANGELOG](CHANGELOG.md) para saber o que mudou.
 
@@ -29,13 +33,12 @@ sua coleção inteira de anime **e mangá** apareça nas estatísticas ao lado d
   tem contagem de páginas, então a velocidade de leitura é estimada - veja
   [Como o tempo de mangá é calculado](#como-o-tempo-de-mangá-é-calculado) e
   [docs/COMO_CALCULA_TEMPO.md](docs/COMO_CALCULA_TEMPO.md).
-- Modo opcional **Somar ao tempo existente**, que acumula em vez de substituir.
-
-### Atividade da biblioteca
-- O `LastActivity` passa a ser a data de `updatedAt` do AniList, então um anime ou mangá
-  que você atualizou no AniList aparece no agrupamento/filtro *Atividade recente*.
-- O `PlayCount` é marcado na primeira vez que a entrada tem progresso, que é o que os
-  filtros de atividade usam.
+- Modo opcional **Somar ao tempo existente**, que soma o tempo do AniList por cima do tempo
+  que a entrada já tinha. Desde a 1.2 a extensão guarda quanto escreveu em cada jogo, então
+  ela substitui só a própria parte em vez de somar por cima dela a cada execução.
+- Modo opcional **Gravar sessão no GameActivity**, que também registra uma sessão de uso
+  por item, para os gráficos. Desligado por padrão - veja
+  [Histórico de sessões](#histórico-de-sessões).
 
 ### Automação
 - **Sincronização automática** opcional, no máximo uma vez a cada 24 horas, disparada por
@@ -45,15 +48,17 @@ sua coleção inteira de anime **e mangá** apareça nas estatísticas ao lado d
   configurações, então sobrevive a reinícios e não briga com a tela de settings.
 
 ### Escopos e menus
-- `Extensões ▸ Playtime AniList` (menu principal, com os 3 itens originais mais
+- `Extensões ▸ AniList PlayTime` (menu principal, com os 3 itens originais mais
   *Sincronizar anime e mangá*).
-- `Playtime AniList ▸ Atualizar tempo destes itens` no menu de contexto do jogo.
+- `AniList PlayTime ▸ Atualizar tempo destes itens` no menu de contexto do jogo.
 - Sincronizar tudo, ou só o que mudou no AniList nos últimos 7 ou 30 dias.
 
 ## Requisitos
 
 - Playnite 10.x com API 6.17.0 ou superior.
 - `Importer for AniList` instalado e autenticado (o token dele é reaproveitado).
+- Opcional, só para o histórico de sessões: o add-on
+  [GameActivity](https://github.com/Lacro59/playnite-gameactivity-plugin), 3.5 ou superior.
 
 ## Instalação
 
@@ -74,7 +79,7 @@ playnite://playnite/installaddon/PlaytimeAniList_C034A45E-3C56-48DA-ABE0-1C46B4C
 
 ## Uso
 
-**Extensões ▸ Playtime AniList**
+**Extensões ▸ AniList PlayTime**
 
 | Item | O que faz |
 | --- | --- |
@@ -84,11 +89,11 @@ playnite://playnite/installaddon/PlaytimeAniList_C034A45E-3C56-48DA-ABE0-1C46B4C
 | Sincronizar anime e mangá | Sincroniza sempre os dois tipos, ignorando o escopo das configurações. |
 
 Em um jogo selecionado, clique com o botão direito e escolha
-**Playtime AniList ▸ Atualizar tempo destes itens**.
+**AniList PlayTime ▸ Atualizar tempo destes itens**.
 
-Ao final aparece um resumo com quantos jogos foram atualizados, quantos não têm link do
-AniList, quantos foram pulados, quantos mangás foram encontrados, quanto tempo foi somado
-para mangá e quantas datas de atividade foram atualizadas.
+Ao final aparece um resumo com quantos itens do AniList têm tempo, quantos mangás têm tempo
+e o total de horas de mangá, quantos tempos foram alterados naquela rodada, quantos ficaram
+fora da janela de sincronização e quantos não têm link do AniList.
 
 ## Como o tempo de anime é calculado
 
@@ -127,7 +132,7 @@ minutos por capítulo. Progresso `0` é sempre `0`.
 
 ## Configurações
 
-*Playnite ▸ Configurações ▸ Extensões ▸ Playtime AniList*
+*Playnite ▸ Configurações ▸ Extensões ▸ AniList PlayTime*
 
 | Opção | Padrão | Descrição |
 | --- | --- | --- |
@@ -141,10 +146,29 @@ minutos por capítulo. Progresso `0` é sempre `0`.
 | Minutos por capítulo (webtoon) | 10 | Para `countryOfOrigin: KR` ou `CN`. |
 | Sincronização automática ao atualizar a biblioteca | desligado | Sincroniza no máximo 1x a cada 24 h, após uma atualização da biblioteca. |
 | Notificar após sincronização automática | ligado | Mostra o resultado como notificação do Playnite. |
+| Gravar sessão no GameActivity | desligado | Também registra uma sessão de uso por item, para os gráficos. |
 | Token alternativo | vazio | Deixe vazio para reaproveitar o token do `Importer for AniList`. |
 
 Valores fora da faixa são ajustados para o limite, então um erro de digitação não gera um
 tempo de uso absurdo.
+
+## Histórico de sessões
+
+Os gráficos do próprio Playnite só somam totais, porque a API pública de extensões expõe
+`Playtime` e `LastActivity` mas não uma tabela de sessões. Com **Gravar sessão no
+GameActivity** ligado, a extensão também escreve uma sessão por item através do add-on
+[GameActivity](https://github.com/Lacro59/playnite-gameactivity-plugin), que tem essa
+tabela - assim anime e mangá aparecem como série temporal, e não só como total.
+
+- Uma sessão por entrada, datada com o `updatedAt` do AniList (quando você mexeu no item
+  lá), carregando todo o tempo calculado.
+- A sessão é **substituída**, nunca somada: sincronizar dez vezes continua deixando uma
+  sessão só.
+- Precisa do GameActivity 3.5 ou superior. Sem ele a extensão continua funcionando e
+  continua gravando o `Playtime`; só o histórico de sessões é pulado, com uma linha no log.
+- A escrita passa por reflexão, porque o Playnite não tem API pública para isso. Se uma
+  versão futura do GameActivity mudar os nomes internos, a sincronização continua
+  funcionando e as sessões são puladas - o log avisa em vez de a sincronização falhar.
 
 ## Como o id do AniList é encontrado
 
@@ -159,13 +183,16 @@ silêncio todo jogo importado sem links.
 - O tempo de mangá é uma estimativa, não uma medição. O AniList não tem contagem de
   páginas e a extensão não conhece a sua velocidade real de leitura. Ajuste as
   configurações para o seu jeito de ler.
-- Não existe histórico de tempo por dia ou por mês. A API pública de extensões do
-  Playnite expõe `Playtime` e `LastActivity`, mas não uma tabela de sessões, então os
-  gráficos do Playnite somam totais em vez de mostrar uma série temporal.
+- Sem o GameActivity não existe histórico de tempo por dia ou por mês, então os gráficos do
+  Playnite somam totais em vez de mostrar uma série temporal. Veja
+  [Histórico de sessões](#histórico-de-sessões).
 - A sincronização não é em tempo real. O AniList não tem notificação push de mudança de
   lista, então a extensão sincroniza quando você manda, ou no máximo 1x por dia após uma
   atualização da biblioteca.
-- A extensão não executa nada: ela só escreve o campo `Playtime`.
+- A extensão não executa nada: ela só escreve o campo `Playtime` (e, se você ligar, uma
+  sessão).
+- A sessão só é redatada quando a entrada do AniList muda. Se você reler um volume sem
+  marcar nada novo no AniList, o tempo da entrada também não muda.
 
 ## Compilando a partir do código
 
@@ -176,7 +203,8 @@ silêncio todo jogo importado sem links.
 
 Requisitos: .NET SDK e uma instalação do Playnite com `Toolbox.exe` e `Playnite.SDK.dll`.
 O script compila o `src/AniListWatchTime.csproj`, monta o staging com `extension.yaml` +
-`icon.png` + a DLL e chama o `Toolbox.exe pack` para gerar o `.pext` em `dist/`.
+`icon.png` + a DLL e chama o `Toolbox.exe pack` para gerar o `.pext` em `dist/`, renomeado
+para `<Nome>_<versão>.pext` (por exemplo `AniList_PlayTime_1-3.pext`).
 
 ## Links
 

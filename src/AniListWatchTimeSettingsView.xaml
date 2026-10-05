@@ -22,7 +22,7 @@
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="15,10,15,15">
-            <TextBlock FontWeight="Bold" FontSize="16" Text="Playtime AniList" Margin="0,0,0,8" />
+            <TextBlock FontWeight="Bold" FontSize="16" Text="AniList PlayTime" Margin="0,0,0,8" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,16"
                        Text="Preenche o tempo de jogo no Playnite com as horas da sua lista do AniList: animes contam episódios assistidos × duração por episódio; mangás contam capítulos lidos. O tempo é somado no mesmo campo de tempo de jogo, então aparece em Playnite ▸ Estatísticas (Tempo total, Tempo médio e Mais jogados). O token logado no 'Importer for AniList' é usado automaticamente, sem configuração." />
 
@@ -65,6 +65,17 @@
                       Content="Mostrar notificação com o resultado da sincronização automática" Margin="0,0,0,4" />
             <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,4,0,16"
                        Text="A sincronização automática roda no máximo uma vez a cada 24 horas e só depois que todos os plugins de biblioteca terminam, então não compete com o 'Importer for AniList'." />
+
+            <TextBlock Style="{StaticResource SectionTitle}" Text="Atividade" />
+            <CheckBox IsChecked="{Binding Settings.WriteActivitySessions}"
+                      Content="Gravar uma sessão por item no plugin GameActivity (para aparecer nos gráficos)" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Modo de sessão no GameActivity" />
+            <ComboBox SelectedIndex="{Binding Settings.SessionMode}" Width="280" HorizontalAlignment="Left" Margin="0,0,0,4">
+                <ComboBoxItem Content="Substituir total (uma sessão por item, tempo total)" />
+                <ComboBoxItem Content="Incremental (nova sessão a cada avanço, série temporal)" />
+            </ComboBox>
+            <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,4,0,16"
+                       Text="Incremental cria uma sessão só com o tempo novo desde a última sync, formando histórico real. Substituir mantém uma sessão única com o tempo total atual." />
 
             <TextBlock Style="{StaticResource SectionTitle}" Text="Token de acesso" />
             <TextBlock TextWrapping="Wrap" Margin="0,0,0,4"

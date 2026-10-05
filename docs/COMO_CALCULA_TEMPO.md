@@ -94,7 +94,59 @@ ou `CN` - por isso a detecção é por origem, e não por formato.
 
 ### Progresso 0
 
-Sempre `0`. Um item só no *Planning* não ganha tempo de leitura.
+Um item só no *Planning* não ganha tempo de leitura. Se o AniList diz que o progresso do
+item é `0`, a extensão zera **a parte do tempo que ela mesma escreveu** nesse item,
+mantendo qualquer tempo que existia antes de a extensão passar por ele (ver
+[Linha de base por jogo](#linha-de-base-por-jogo)).
+
+Duas ressalvas importantes:
+
+- Se a extensão nunca escreveu nesse item (primeira sincronização depois de instalar a
+  1.2, ou `state.json` apagado), ela não tem como saber quanto do tempo é dela. Nesse
+  caso **preserva** o tempo em vez de zerar.
+- Se o item não veio na resposta do AniList naquela sincronização, o tempo também é
+  preservado. Uma resposta incompleta da API não apaga nada.
+
+### Linha de base por jogo
+
+A extensão guarda no `state.json` (`ExtensionsData/C034A45E-…/state.json`) quanto tempo ela
+já escreveu em cada jogo, com a chave sendo o id do jogo no Playnite. Isso serve para duas
+coisas:
+
+1. **Não somar por cima de si mesma.** Com "Somar ao tempo de jogo já existente" ligado, a
+   extensão aplica `tempo atual − o que ela escreveu antes + o valor novo`. Sem esse
+   registro, cada sincronização somaria o tempo do AniList de novo, e o total cresceria sem
+   limite (o problema que a 1.2 corrige).
+2. **Zerar só a própria contribuição.** Quando o progresso volta a 0 no AniList, o tempo de
+   origem desconhecida fica intacto.
+
+O registro tem um item por jogo sincronizado (aproximadamente 90 KB para 2 mil jogos) e é
+podado a cada sincronização, removendo jogos que saíram da biblioteca. Só entra na poda o
+que foi realmente avaliado naquela rodada: uma sincronização de janela semanal não avalia
+os mangás, então os mangás não são podados.
+
+O arquivo é escrito de forma atômica (arquivo temporário + `File.Replace`), para que uma
+interrupção no meio da gravação não deixe um arquivo pela metade. Se ele chegar
+corrompido, a extensão **não** o trata como vazio: ela para e avisa, porque ler um
+arquário quebrado como "nada gravado" transformaria uma extensão que soma em uma
+extensão que substitui, sem o usuário pedir nada disso.
+
+### Apagar o `state.json` tem custo
+
+O arquivo guarda o quanto a extensão escreveu em cada jogo. Sem ele, uma sincronização com
+"Somar ao tempo de jogo já existente" ligado **soma o tempo do AniList por cima do valor
+que a extensão já tinha gravado antes** — porque esse valor agora parece tempo de origem
+desconhecida. Apagar o arquivo não é uma volta ao estado neutro.
+
+Para recomeçar do zero sem inflar nada:
+
+1. Apague o `state.json`.
+2. Desligue "Somar ao tempo de jogo já existente".
+3. Sincronize uma vez (isso recria a linha de base a partir do tempo atual).
+4. Ligue a opção de novo e sincronize.
+
+Se você tem tempo de origem desconhecida que não pode perder, restaure um backup do
+arquivo em vez de apagá-lo.
 
 ## Progresso em volumes
 
@@ -124,10 +176,34 @@ Faixas aceitas (valores fora delas são ajustados para o limite, nunca rejeitado
 
 ## O que esta extensão **não** inventa
 
-- Ela não soma tempo por dia/mês, porque a API pública do Playnite não expõe tabela de
-  sessões - só `Playtime` e `LastActivity`. Os gráficos do Playnite somam o total, mas não
-  mostram uma série temporal.
-- Ela não lança o mangá: a extensão não executa nada, ela só escreve o campo `Playtime`.
-- Ela não é tempo real de leitura: é progresso do AniList vezes uma velocidade média
-  configurável. Serve para que a coleção entre nas estatísticas, não para medir a sua
-  sessão de leitura.
+- Ela não mede a sua sessão de leitura: o tempo é o progresso do AniList vezes uma
+  velocidade média configurável. Serve para que a coleção entre nas estatísticas, não para
+  medir quanto você leu hoje.
+- Ela não lança o mangá: a extensão não executa nada. Ela escreve o campo `Playtime` e,
+  se você ligar *Gravar sessão no GameActivity*, uma sessão.
+- Ela não inventa um histórico por dia/mês por conta própria. A API pública de extensões do
+  Playnite expõe `Playtime` e `LastActivity`, mas não uma tabela de sessões, então os
+  gráficos do Playnite somam o total e não mostram uma série temporal. Para ter a série
+  temporal é preciso ligar *Gravar sessão no GameActivity* — ver abaixo.
+- Uma sessão é escrita **por item**, com o tempo todo em uma única sessão datada no
+  `updatedAt` do AniList (quando você mexeu no item lá). Não existe uma sessão por capítulo,
+  por dia lido, nem por volume: a extensão não sabe quando você leu, só até onde leu.
+
+## Sessões no GameActivity
+
+Com *Gravar sessão no GameActivity* ligado, a extensão também escreve uma sessão por item no
+add-on GameActivity, que tem tabela de sessões. Como o tempo é sempre o total acumulado
+até o `updatedAt`, a sessão é **substituída** a cada sincronização, e não somada — dez
+sincronizações deixam uma sessão, não dez.
+
+Duas consequências práticas:
+
+- Quando o progresso volta a 0, a sessão é removida junto com o tempo, senão os gráficos
+  continuariam mostrando tempo morto.
+- Se você reler um volume sem marcar nada novo no AniList, nem o tempo nem a sessão mudam,
+  porque o `updatedAt` é o mesmo.
+
+A escrita passa por reflexão (o Playnite não tem API pública para sessões), então ela
+quebra de forma limpa: se o GameActivity não estiver instalado, ou se uma versão futura
+mudar os nomes internos, a sincronização continua funcionando e grava o `Playtime`; só as
+sessões são puladas, com uma linha no log.

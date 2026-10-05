@@ -15,10 +15,13 @@ namespace AniListWatchTime
 {
     public class AniListWatchTime : GenericPlugin
     {
-        public const string MenuSectionName = "Playtime AniList";
-        public const string ExtensionsMenuSectionName = "@" + MenuSectionName;
+        public const string MenuSectionName = "AniList PlayTime";
 
-        private const string AutoSyncNotificationId = "PlaytimeAniListAutoSync";
+        // Sem o prefixo "@". Com "@" o Playnite colocava a extensao como menu proprio na
+        // barra principal, e nao dentro de Extensoes como o README sempre prometeu.
+        public const string ExtensionsMenuSectionName = MenuSectionName;
+
+        private const string AutoSyncNotificationId = "AniListPlayTimeAutoSync";
         private const string StateFileName = "state.json";
 
         private static readonly TimeSpan AutoSyncInterval = TimeSpan.FromHours(24);
@@ -123,7 +126,7 @@ namespace AniListWatchTime
                 return;
             }
 
-            var state = LoadState();
+            var state = LoadState(out _);
             if (state.LastAutoSyncUtc.HasValue &&
                 DateTime.UtcNow - state.LastAutoSyncUtc.Value < AutoSyncInterval)
             {
@@ -140,15 +143,21 @@ namespace AniListWatchTime
                 PlayniteApi.Notifications.Remove(AutoSyncNotificationId);
                 var result = ExecuteSync(SyncWindow.All, syncScope);
 
-                state = LoadState();
-                state.LastAutoSyncUtc = DateTime.UtcNow;
-                SaveState(state);
+                // So carimba as 24 horas quando a sync chegou ao fim. Sem isso, uma falha de
+                // rede ou um token invalido travava a sincronizacao automatica por um dia
+                // inteiro sem o usuario tomar ciencia de nada.
+                if (!result.Failed)
+                {
+                    state = LoadState(out _);
+                    state.LastAutoSyncUtc = DateTime.UtcNow;
+                    SaveState(state);
+                }
 
-                if (!string.IsNullOrEmpty(result) && settings.Settings.AutoSyncShowNotification)
+                if (!string.IsNullOrEmpty(result.Message) && settings.Settings.AutoSyncShowNotification)
                 {
                     PlayniteApi.Notifications.Add(new NotificationMessage(
                         AutoSyncNotificationId,
-                        result.Replace(Environment.NewLine, " "),
+                        result.Message.Replace(Environment.NewLine, " "),
                         NotificationType.Info));
                 }
             });
@@ -182,24 +191,24 @@ namespace AniListWatchTime
             {
                 PlayniteApi.Dialogs.ShowMessage(
                     "Selecione pelo menos um tipo de mídia (anime ou mangá) nas configurações da extensão.",
-                    "Playtime AniList");
+                    MenuSectionName);
                 return;
             }
 
             var result = ExecuteSync(window, scope.Value);
-            if (!string.IsNullOrEmpty(result))
+            if (!string.IsNullOrEmpty(result.Message))
             {
-                PlayniteApi.Dialogs.ShowMessage(result, "Playtime AniList");
+                PlayniteApi.Dialogs.ShowMessage(result.Message, MenuSectionName);
             }
         }
 
-        private string ExecuteSync(SyncWindow window, SyncScope scope)
+        private SyncResult ExecuteSync(SyncWindow window, SyncScope scope)
         {
             lock (syncLock)
             {
                 if (syncRunning)
                 {
-                    return "Já existe uma sincronização em andamento. Aguarde ela terminar.";
+                    return new SyncResult("Já existe uma sincronização em andamento. Aguarde ela terminar.", true);
                 }
 
                 syncRunning = true;
@@ -207,10 +216,22 @@ namespace AniListWatchTime
 
             try
             {
-                string result = null;
+                bool stateDamaged;
+                var state = LoadState(out stateDamaged);
+                if (stateDamaged)
+                {
+                    return new SyncResult(StateDamagedMessage(), true);
+                }
+
+                if (state.AppliedSeconds == null)
+                {
+                    state.AppliedSeconds = new Dictionary<string, long>();
+                }
+
+                SyncResult result = null;
                 RunOnUiThread(() =>
                 {
-                    var progressOptions = new GlobalProgressOptions("Playtime AniList - Sincronizando...", false)
+                    var progressOptions = new GlobalProgressOptions(MenuSectionName + " - Sincronizando...", false)
                     {
                         IsIndeterminate = true
                     };
@@ -219,17 +240,26 @@ namespace AniListWatchTime
                     {
                         try
                         {
-                            result = anilistClient.SyncLibrary(settings.Settings, PlayniteApi, window, scope);
+                            result = anilistClient.SyncLibrary(settings.Settings, PlayniteApi, window, scope,
+                                state.AppliedSeconds);
                         }
                         catch (Exception e)
                         {
                             LogManager.GetLogger().Error(e, "Erro ao sincronizar a biblioteca.");
-                            result = "Erro ao sincronizar: " + e.Message;
+                            result = new SyncResult("Erro ao sincronizar: " + e.Message, true);
                         }
                     }, progressOptions);
                 });
 
-                return result;
+                // A linha de base so e persistida quando a sincronizacao foi ate o fim.
+                // Um erro no meio do caminho deixa o arquivo como estava, o custo e a proxima
+                // sincronizacao somar por cima de uma vez.
+                if (result != null && !result.Failed)
+                {
+                    SaveState(state);
+                }
+
+                return result ?? new SyncResult("A sincronização não produziu resultado.", true);
             }
             finally
             {
@@ -242,28 +272,75 @@ namespace AniListWatchTime
 
         private void RunSelectedSync(List<Game> games)
         {
-            string result = null;
-            var progressOptions = new GlobalProgressOptions("Playtime AniList - Atualizando selecionados...", false)
+            // Mesma trava de ExecuteSync. Sem ela o autosync (Task.Run) e esta sincronizacao
+            // rodavam juntos: dois LoadState/SaveState, e o segundo sobrescrevia o estado do
+            // primeiro, o que fazia a sync seguinte somar o tempo da extensao por cima dele
+            // mesmo.
+            lock (syncLock)
             {
-                IsIndeterminate = true
-            };
-
-            PlayniteApi.Dialogs.ActivateGlobalProgress(a =>
-            {
-                try
+                if (syncRunning)
                 {
-                    result = anilistClient.SyncSelectedGames(settings.Settings, PlayniteApi, games);
+                    PlayniteApi.Dialogs.ShowMessage(
+                        "Já existe uma sincronização em andamento. Aguarde ela terminar.",
+                        MenuSectionName);
+                    return;
                 }
-                catch (Exception e)
-                {
-                    LogManager.GetLogger().Error(e, "Erro ao atualizar os selecionados.");
-                    result = "Erro ao atualizar: " + e.Message;
-                }
-            }, progressOptions);
 
-            if (!string.IsNullOrEmpty(result))
+                syncRunning = true;
+            }
+
+            try
             {
-                PlayniteApi.Dialogs.ShowMessage(result, "Playtime AniList");
+                bool stateDamaged;
+                var state = LoadState(out stateDamaged);
+                if (stateDamaged)
+                {
+                    PlayniteApi.Dialogs.ShowMessage(StateDamagedMessage(), MenuSectionName);
+                    return;
+                }
+
+                if (state.AppliedSeconds == null)
+                {
+                    state.AppliedSeconds = new Dictionary<string, long>();
+                }
+
+                SyncResult result = null;
+                var progressOptions = new GlobalProgressOptions(MenuSectionName + " - Atualizando selecionados...", false)
+                {
+                    IsIndeterminate = true
+                };
+
+                PlayniteApi.Dialogs.ActivateGlobalProgress(a =>
+                {
+                    try
+                    {
+                        result = anilistClient.SyncSelectedGames(settings.Settings, PlayniteApi, games, state.AppliedSeconds);
+                    }
+                    catch (Exception e)
+                    {
+                        LogManager.GetLogger().Error(e, "Erro ao atualizar os selecionados.");
+                        result = new SyncResult("Erro ao atualizar: " + e.Message, true);
+                    }
+                }, progressOptions);
+
+                result = result ?? new SyncResult("A atualização não produziu resultado.", true);
+
+                if (!result.Failed)
+                {
+                    SaveState(state);
+                }
+
+                if (!string.IsNullOrEmpty(result.Message))
+                {
+                    PlayniteApi.Dialogs.ShowMessage(result.Message, MenuSectionName);
+                }
+            }
+            finally
+            {
+                lock (syncLock)
+                {
+                    syncRunning = false;
+                }
             }
         }
 
@@ -279,8 +356,9 @@ namespace AniListWatchTime
             dispatcher.Invoke(action);
         }
 
-        private PluginState LoadState()
+        private PluginState LoadState(out bool damaged)
         {
+            damaged = false;
             var statePath = Path.Combine(GetPluginUserDataPath(), StateFileName);
             if (!File.Exists(statePath))
             {
@@ -293,17 +371,51 @@ namespace AniListWatchTime
             }
             catch (Exception e)
             {
+                // Um state.json ilegivel significa perder a linha de base, e perder a linha
+                // de base com "somar" ligado faz a proxima sync contar o tempo desta extensao
+                // duas vezes. Melhor recusar a sync e deixar o arquivo intacto para o usuario
+                // recuperar do que tratar o estado como vazio e inflar a biblioteca inteira.
                 logger.Error(e, "Falha ao ler o estado interno da extensão.");
+                damaged = true;
                 return new PluginState();
             }
+        }
+
+        private string StateDamagedMessage()
+        {
+            return "Não foi possível ler o arquivo de estado da extensão (" +
+                   Path.Combine(GetPluginUserDataPath(), StateFileName) + ")." + Environment.NewLine +
+                   Environment.NewLine +
+                   "Ele guarda o quanto esta extensão já escreveu em cada jogo. Sem ele a próxima " +
+                   "sincronização não sabe separar o tempo dela do tempo que já estava no jogo, " +
+                   "e com \"Somar ao tempo de jogo já existente\" ligado isso contaria o tempo duas vezes." +
+                   Environment.NewLine + Environment.NewLine +
+                   "Nada foi alterado e o arquivo foi preservado. Para recomeçar: apague o arquivo, " +
+                   "desligue \"Somar ao tempo de jogo já existente\", sincronize uma vez e ligue a " +
+                   "opção de novo. Sincronizar logo após apagar o arquivo, com a opção ligada, " +
+                   "somaria o tempo do AniList ao valor que esta extensão tinha gravado antes." +
+                   Environment.NewLine + Environment.NewLine +
+                   "Para manter o tempo de origem desconhecida, restaure um backup em vez de apagar.";
         }
 
         private void SaveState(PluginState state)
         {
             var statePath = Path.Combine(GetPluginUserDataPath(), StateFileName);
+            var tempPath = statePath + ".tmp";
             try
             {
-                File.WriteAllText(statePath, Serialization.ToJson(state, true));
+                // Escrita em arquivo temporário e troca no lugar: um crash ou uma queda de
+                // energia no meio da escrita deixaria um state.json truncado, que na proxima
+                // leitura cai no caso de "estado danificado" acima.
+                File.WriteAllText(tempPath, Serialization.ToJson(state, true));
+                if (File.Exists(statePath))
+                {
+                    File.Replace(tempPath, statePath, null);
+                }
+                else
+                {
+                    File.Move(tempPath, statePath);
+                }
             }
             catch (Exception e)
             {
@@ -315,5 +427,7 @@ namespace AniListWatchTime
     public class PluginState
     {
         public DateTime? LastAutoSyncUtc { get; set; }
+
+        public Dictionary<string, long> AppliedSeconds { get; set; } = new Dictionary<string, long>();
     }
 }

@@ -51,6 +51,8 @@ if ($NoPack) { return }
 
 $manifest = Get-Content (Join-Path $scriptDir 'extension.yaml') -Raw
 $id = (($manifest -split "`n" | Where-Object { $_ -match '^Id:' } | Select-Object -First 1) -split ':', 2)[1].Trim()
+$name = (($manifest -split "`n" | Where-Object { $_ -match '^Name:' } | Select-Object -First 1) -split ':', 2)[1].Trim()
+$version = (($manifest -split "`n" | Where-Object { $_ -match '^Version:' } | Select-Object -First 1) -split ':', 2)[1].Trim()
 
 $dist = Join-Path $scriptDir 'dist'
 $staging = Join-Path $dist "staging\$id"
@@ -72,6 +74,16 @@ Remove-Item -LiteralPath (Join-Path $dist 'staging') -Recurse -Force
 $pext = Get-ChildItem -Path $dist -Filter "$id*.pext" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
+# O Toolbox.exe nao aceita nome de saida: ele sempre gera "<Id>_<major>_<minor>.pext",
+# com o GUID no meio do arquivo. Aqui o pacote e renomeado para "<Nome>_<versao>.pext",
+# com espaco virando "_" e ponto virando "-", que e o nome que vai para a release.
+$finalName = ($name -replace '\s+', '_') + '_' + ($version -replace '\.', '-') + '.pext'
+$finalPath = Join-Path $dist $finalName
+if ($pext -and $pext.FullName -ne $finalPath)
+{
+    Move-Item -LiteralPath $pext.FullName -Destination $finalPath -Force
+}
+
 Write-Host ""
-Write-Host "Pacote gerado: $($pext.FullName)"
+Write-Host "Pacote gerado: $finalPath"
 Write-Host "Para instalar: arraste o .pext para dentro de uma janela do Playnite aberta (modo Desktop) ou de duplo clique no arquivo."
